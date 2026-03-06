@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Project Board — Airtable</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f0ede8;
+      --surface: #ffffff;
+      --border: #e2ddd8;
+      --text-primary: #1a1714;
+      --text-secondary: #6b6560;
+      --text-muted: #a09b96;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    /* ── CONFIG OVERLAY ── */
+    #config-overlay {
+      position: fixed; inset: 0;
+      background: rgba(26,23,20,0.85);
+      backdrop-filter: blur(6px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    #config-overlay.hidden { display: none; }
+    .config-box {
+      background: var(--surface);
+      border-radius: 16px; padding: 40px;
+      width: min(520px, 92vw);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.22);
+    }
+    .config-box h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 28px; margin-bottom: 6px;
+    }
+    .config-box p {
+      font-size: 14px; color: var(--text-secondary);
+      margin-bottom: 28px; line-height: 1.5;
+    }
+    .field-group { margin-bottom: 18px; }
+    .field-group label {
+      display: block; font-size: 12px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+      color: var(--text-secondary); margin-bottom: 6px;
+    }
+    .field-group input {
+      width: 100%; padding: 11px 14px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-family: 'DM Sans', sans-serif; font-size: 14px;
+      background: #fafaf8; color: var(--text-primary);
+      outline: none; transition: border-color .2s;
+    }
+    .field-group input:focus { border-color: #2d5a27; }
+    .config-hint {
+      font-size: 12px; color: var(--text-muted);
+      margin-top: 5px; line-height: 1.5;
+    }
+    .config-hint code {
+      background: #f0ede8; padding: 1px 5px;
+      border-radius: 4px; font-size: 11px;
+    }
+    .btn-primary {
+      width: 100%; padding: 13px;
+      background: var(--text-primary); color: #fff;
+      border: none; border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px; font-weight: 500;
+      cursor: pointer; margin-top: 8px;
+      transition: background .2s;
+    }
+    .btn-primary:hover { background: #333; }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--text-primary); color: #fff;
+      padding: 24px 48px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.15);
+    }
+    .header-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 26px; font-style: italic;
+    }
+    .header-sub {
+      font-size: 12px; font-weight: 300;
+      color: rgba(255,255,255,.45); letter-spacing: .05em;
+      margin-top: 2px;
+    }
+    .header-right { display: flex; align-items: center; gap: 14px; }
+    #project-count { font-size: 13px; color: rgba(255,255,255,.5); }
+    #refresh-btn {
+      background: none; border: none; color: rgba(255,255,255,.6);
+      cursor: pointer; font-size: 20px; line-height: 1;
+      transition: transform .4s, color .2s; padding: 4px;
+    }
+    #refresh-btn:hover { color: #fff; }
+    #refresh-btn.spinning { animation: spin .7s linear; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-config {
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.2);
+      color: #fff; padding: 7px 16px;
+      border-radius: 6px; font-size: 13px;
+      cursor: pointer; font-family: 'DM Sans', sans-serif;
+      transition: background .2s;
+    }
+    .btn-config:hover { background: rgba(255,255,255,.2); }
+
+    /* ── FILTER BAR ── */
+    .filter-bar {
+      padding: 16px 48px;
+      display: flex; gap: 8px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .filter-chip {
+      padding: 5px 16px; border-radius: 20px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; border: 1.5px solid var(--border);
+      background: var(--surface); color: var(--text-secondary);
+      transition: all .15s;
+    }
+    .filter-chip:hover { border-color: var(--text-primary); color: var(--text-primary); }
+    .filter-chip.active { background: var(--text-primary); color: #fff; border-color: var(--text-primary); }
+
+    /* ── GRID ── */
+    main { padding: 32px 48px 64px; }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px; padding: 24px 22px 20px;
+      transition: box-shadow .25s, transform .25s;
+      animation: fadeUp .35s ease both;
+    }
+    .card:hover {
+      box-shadow: 0 8px 32px rgba(0,0,0,.1);
+      transform: translateY(-3px);
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card-name {
+      font-family: 'DM Serif Display', serif;
+      font-size: 19px; line-height: 1.3; margin-bottom: 14px;
+    }
+
+    /* ── STATUS BADGE ── */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; letter-spacing: .03em;
+      margin-bottom: 18px;
+    }
+    .status-badge::before {
+      content: ''; width: 6px; height: 6px;
+      border-radius: 50%; background: currentColor; opacity: .7;
+    }
+    .s-done         { background: #dcfce7; color: #166534; }
+    .s-in-progress  { background: #dbeafe; color: #1e40af; }
+    .s-blocked      { background: #fee2e2; color: #991b1b; }
+    .s-not-started  { background: #f3f4f6; color: #374151; }
+    .s-default      { background: #ebebeb; color: #555; }
+
+    /* ── META GRID ── */
+    .card-meta {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 12px 8px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-item.full { grid-column: 1/-1; }
+    .meta-label {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: .07em; text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .meta-value { font-size: 13px; color: var(--text-secondary); }
+    .meta-value.na { color: var(--text-muted); font-style: italic; }
+
+    /* ── TEAM TAG ── */
+    .team-tag {
+      display: inline-block;
+      background: #f0ede8; color: var(--text-secondary);
+      padding: 2px 10px; border-radius: 12px;
+      font-size: 12px; font-weight: 500;
+    }
+
+    /* ── STATE MESSAGES ── */
+    .state-msg {
+      grid-column: 1/-1; text-align: center;
+      padding: 80px 20px; color: var(--text-muted);
+    }
+    .state-msg .icon { font-size: 40px; margin-bottom: 14px; }
+    .state-msg h3 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 22px; color: var(--text-secondary); margin-bottom: 8px;
+    }
+    .state-msg p { font-size: 14px; line-height: 1.6; }
+    .loader {
+      display: inline-block; width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--text-primary);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-bottom: 16px;
+    }
+    .error-msg { color: #b91c1c; }
+
+    #last-updated {
+      font-size: 12px; color: var(--text-muted);
+      text-align: right; padding: 0 48px 16px;
+    }
+
+    @media (max-width: 640px) {
+      header, .filter-bar, main, #last-updated { padding-left: 16px; padding-right: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- CONFIG -->
+<div id="config-overlay">
+  <div class="config-box">
+    <h2>Connect to Airtable</h2>
+    <p>Enter your credentials. They stay in your browser session only.</p>
+
+    <div class="field-group">
+      <label>Personal Access Token</label>
+      <input id="inp-token" type="password" placeholder="patXXXXXXXXXXXX…" autocomplete="off"/>
+      <div class="config-hint">Generate at <code>airtable.com/create/tokens</code> — needs <code>data.records:read</code> scope.</div>
+    </div>
+    <div class="field-group">
+      <label>Base ID</label>
+      <input id="inp-base" type="text" placeholder="appXXXXXXXXXXXXXX" autocomplete="off"/>
+    </div>
+    <div class="field-group">
+      <label>Table Name or ID</label>
+      <input id="inp-table" type="text" value="Projects" placeholder="Projects or tblXXXXXXXXXXXXXX"/>
+    </div>
+    <button class="btn-primary" onclick="applyConfig()">Load Projects →</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div>
+    <div class="header-title">Project Board</div>
+    <div class="header-sub">Powered by Airtable</div>
+  </div>
+  <div class="header-right">
+    <span id="project-count"></span>
+    <button id="refresh-btn" title="Refresh" onclick="fetchRecords()">↻</button>
+    <button class="btn-config" onclick="showConfig()">⚙ Configure</button>
+  </div>
+</header>
+
+<div class="filter-bar" id="filter-bar"></div>
+<div id="last-updated"></div>
+
+<main><div id="grid">
+  <div class="state-msg">
+    <div class="icon">📋</div>
+    <h3>No data yet</h3>
+    <p>Enter your Airtable credentials to get started.</p>
+  </div>
+</div></main>
+
+<script>
+  let cfg = { token: '', base: '', table: 'Projects' };
+  let allRecords = [];
+  let activeFilter = 'All';
+  let autoRefreshId = null;
+
+  function applyConfig() {
+    const token = document.getElementById('inp-token').value.trim();
+    const base  = document.getElementById('inp-base').value.trim();
+    const table = document.getElementById('inp-table').value.trim() || 'Projects';
+    if (!token || !base) { alert('Please fill in all fields.'); return; }
+    cfg = { token, base, table };
+    document.getElementById('config-overlay').classList.add('hidden');
+    fetchRecords();
+    if (autoRefreshId) clearInterval(autoRefreshId);
+    autoRefreshId = setInterval(fetchRecords, 10000);
+  }
+
+  function showConfig() {
+    document.getElementById('inp-token').value = cfg.token;
+    document.getElementById('inp-base').value  = cfg.base;
+    document.getElementById('inp-table').value = cfg.table;
+    document.getElementById('config-overlay').classList.remove('hidden');
+  }
+
+  async function fetchRecords() {
+    const btn = document.getElementById('refresh-btn');
+    btn.classList.add('spinning');
+    showLoading();
+    try {
+      let records = [];
+      let offset = null;
+      do {
+        const params = new URLSearchParams({
+          token: cfg.token, base: cfg.base, table: cfg.table
+        });
+        if (offset) params.set('offset', offset);
+        const res = await fetch(`http://localhost:3456/api/records?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || data.error || `HTTP ${res.status}`);
+        records = records.concat(data.records || []);
+        offset = data.offset || null;
+      } while (offset);
+
+      allRecords = records;
+      buildFilters();
+      renderCards(activeFilter);
+      document.getElementById('last-updated').textContent =
+        `Last updated: ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setTimeout(() => btn.classList.remove('spinning'), 400);
+    }
+  }
+
+  function buildFilters() {
+    const statuses = [...new Set(allRecords.map(r => statusVal(r.fields?.['Project Status'])).filter(Boolean))];
+    const bar = document.getElementById('filter-bar');
+    bar.innerHTML = '';
+    ['All', ...statuses].forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'filter-chip' + (s === activeFilter ? ' active' : '');
+      btn.dataset.filter = s;
+      btn.textContent = s;
+      btn.onclick = () => {
+        activeFilter = s;
+        document.querySelectorAll('.filter-chip').forEach(c =>
+          c.classList.toggle('active', c.dataset.filter === s));
+        renderCards(s);
+      };
+      bar.appendChild(btn);
+    });
+  }
+
+  function renderCards(filter) {
+    const filtered = filter === 'All'
+      ? allRecords
+      : allRecords.filter(r => statusVal(r.fields?.['Project Status']) === filter);
+
+    document.getElementById('project-count').textContent =
+      `${filtered.length} project${filtered.length !== 1 ? 's' : ''}`;
+
+    const grid = document.getElementById('grid');
+    if (!filtered.length) {
+      grid.innerHTML = `<div class="state-msg"><div class="icon">🔍</div><h3>No projects</h3><p>Try a different filter.</p></div>`;
+      return;
+    }
+    grid.innerHTML = filtered.map((r, i) => cardHTML(r, i)).join('');
+  }
+
+  function cardHTML(rec, idx) {
+    const f = rec.fields || {};
+    const name     = esc(f['Project Name'] || f.Name || 'Untitled');
+    const status   = statusVal(f['Project Status'] || f.Status);
+    const start    = fmt(f['Start Date']);
+    const end      = fmt(f['End Date']);
+    const assignee = personName(f.Assignee);
+    const reporter = personName(f.Reporter);
+    const team     = f['Team Assigned'] || '';
+    const delay    = Math.min(idx * 40, 400);
+
+    return `
+    <div class="card" style="animation-delay:${delay}ms">
+      <div class="card-name">${name}</div>
+      ${status ? `<span class="status-badge ${statusClass(status)}">${esc(status)}</span>` : ''}
+      <div class="card-meta">
+        <div class="meta-item">
+          <span class="meta-label">Start Date</span>
+          <span class="meta-value ${start?'':'na'}">${start||'—'}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">End Date</span>
+          <span class="meta-value ${end?'':'na'}">${end||'—'}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Assignee</span>
+          <span class="meta-value ${assignee?'':'na'}">${assignee?esc(assignee):'—'}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Reporter</span>
+          <span class="meta-value ${reporter?'':'na'}">${reporter?esc(reporter):'—'}</span>
+        </div>
+        ${team ? `<div class="meta-item full">
+          <span class="meta-label">Team</span>
+          <span class="meta-value"><span class="team-tag">${esc(team)}</span></span>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function statusVal(v) {
+    if (!v) return '';
+    if (typeof v === 'object' && !Array.isArray(v)) return v.name || '';
+    if (Array.isArray(v)) return v[0]?.name || v[0] || '';
+    return String(v);
+  }
+
+  function statusClass(s) {
+    const str = (typeof s === 'object' && s !== null) ? (s.name || '') : String(s || '');
+    const m = {
+      'done': 's-done',
+      'in progress': 's-in-progress',
+      'blocked': 's-blocked',
+      'not started': 's-not-started',
+    };
+    return m[str.toLowerCase()] || 's-default';
+  }
+
+  function fmt(v) {
+    if (!v) return '';
+    try { return new Date(v).toISOString().slice(0,10); } catch { return v; }
+  }
+
+  function personName(v) {
+    if (!v) return '';
+    if (Array.isArray(v)) return v.map(x => x?.name || x?.email || String(x)).filter(Boolean).join(', ');
+    if (typeof v === 'object') return v.name || v.email || '';
+    return String(v);
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  function showLoading() {
+    document.getElementById('grid').innerHTML =
+      `<div class="state-msg"><div class="loader"></div><p>Loading…</p></div>`;
+  }
+
+  function showError(msg) {
+    document.getElementById('grid').innerHTML = `
+      <div class="state-msg error-msg">
+        <div class="icon">⚠️</div>
+        <h3>Could not load data</h3>
+        <p>${esc(msg)}</p>
+      </div>`;
+  }
+</script>
+</body>
+</html>
